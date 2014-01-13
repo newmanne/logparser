@@ -6,7 +6,9 @@ import joeq.Class.jq_Method;
 import joeq.Compiler.Quad.BasicBlock;
 import joeq.Compiler.Quad.ControlFlowGraph;
 import joeq.Compiler.Quad.Operand.RegisterOperand;
+import joeq.Compiler.Quad.RegisterFactory.Register;
 import joeq.Compiler.Quad.Quad;
+import lombok.Data;
 import chord.project.Chord;
 import chord.project.ClassicProject;
 import chord.project.analyses.JavaAnalysis;
@@ -19,7 +21,7 @@ import com.google.common.collect.Lists;
  * information. The name of the analysis is "logsite-java". TODO: add a filter
  * to keep only LOG.info calls.
  */
-@Chord(name = "logsite-java", consumes = { "I", "V", "IinvkArg", "VT" } // This
+@Chord(name = "logsite-java", consumes = { "I", "V", "IinvkArg", "VT", "IM" } // This
 // analysis
 // uses
 // a
@@ -35,7 +37,7 @@ import com.google.common.collect.Lists;
 )
 public class LogsiteAnalysis extends JavaAnalysis {
 
-	final List<String> logMethods = Lists.newArrayList("info", "debug", "warn", "error");
+	final List<String> logMethods = Lists.newArrayList("info", "debug", "warn", "error", "println");
 
 	public void run() {
 		// // TODO: limit to our file, not libraries
@@ -84,48 +86,65 @@ public class LogsiteAnalysis extends JavaAnalysis {
 												// site
 			String file = m_caller.getDeclaringClass().getSourceFileName(); // file
 			jq_Method m_callee = (jq_Method) tuple[1]; // the callee method
-			if (file.startsWith("java")) {
-				// if (file.startsWith("java") ||
-				// !logMethods.contains(m_callee.getName().toString())) {
+			if (file.startsWith("java") || !logMethods.contains(m_callee.getName().toString())) {
 				continue;
 			}
 
-			List<Integer> regNums = Lists.newArrayList();
-			joeq.Util.Templates.List.RegisterOperand usedRegisters = q.getUsedRegisters();
+			List<RegId> regIds = Lists.newArrayList();
+			joeq.Util.Templates.List.RegisterOperand usedRegisters = q.getUsedRegisters(); // this
+																							// should
+																							// be
+																							// the
+																							// register
+																							// whose
+																							// value
+																							// is
+																							// printed
 			for (int i = 0; i < usedRegisters.size(); i++) {
 				RegisterOperand reg = usedRegisters.getRegisterOperand(i);
-				regNums.add(reg.getRegister().getNumber());
+				regIds.add(new RegId(reg.getRegister()));
 			}
 
-			ControlFlowGraph cfg = m_caller.getCFG();
-			joeq.Util.Templates.ListIterator.BasicBlock reversePostOrderIterator = cfg.reversePostOrderIterator();
-			while (reversePostOrderIterator.hasNext()) {
-				BasicBlock bb = reversePostOrderIterator.nextBasicBlock();
-				for (int i = 0; i < bb.size(); i++) {
-					Quad quad = bb.getQuad(i);
-					joeq.Util.Templates.List.RegisterOperand regs = q.getUsedRegisters();
-					for (int j = 0; j < regs.size(); j++) {
-						RegisterOperand reg = regs.getRegisterOperand(j);
-						if (regNums.contains(reg.getRegister().getNumber())) { // TODO:
-																				// also
-																				// T
-																				// vs
-																				// R
-																				// -
-																				// then
-																				// need
-																				// to
-																				// do
-																				// flow
-																				// analysis
-							System.out.println(quad);
+			while (true) {
+				ControlFlowGraph cfg = m_caller.getCFG();
+				joeq.Util.Templates.ListIterator.BasicBlock reversePostOrderIterator = cfg.reversePostOrderIterator();
+				while (reversePostOrderIterator.hasNext()) {
+					BasicBlock bb = reversePostOrderIterator.nextBasicBlock();
+					for (int i = 0; i < bb.size(); i++) {
+						Quad quad = bb.getQuad(i);
+						joeq.Util.Templates.List.RegisterOperand regs = quad.getDefinedRegisters();
+						for (int j = 0; j < regs.size(); j++) {
+							RegisterOperand reg = regs.getRegisterOperand(j);
+							RegId regId = new RegId(reg.getRegister());
+							if (regIds.contains(regId)) {
+								System.out.println("found the definition of " + regId);
+								System.out.println(quad);
+								regIds.remove(regId);
+								joeq.Util.Templates.List.RegisterOperand usedRegs = quad.getUsedRegisters();
+								for (int k = 0; k < usedRegs.size(); k++) {
+									RegId newRegId = new RegId(usedRegs.getRegisterOperand(k).getRegister());
+									System.out.println("now looking for definition of " + newRegId);
+									regIds.add(newRegId);
+								}
+							}
 						}
 					}
 				}
 			}
 
-			int line = q.getLineNumber(); // line number
-			System.out.println("LogSiteAnalysis: call instruction at line: " + line + "@" + file + " is to target: " + m_callee);
+//			int line = q.getLineNumber(); // line number
+//			System.out.println("LogSiteAnalysis: call instruction at line: " + line + "@" + file + " is to target: " + m_callee);
+		}
+	}
+
+	@Data
+	public static class RegId {
+		final int number;
+		final boolean isTemp;
+
+		public RegId(Register r) {
+			this.number = r.getNumber();
+			this.isTemp = r.isTemp();
 		}
 	}
 }

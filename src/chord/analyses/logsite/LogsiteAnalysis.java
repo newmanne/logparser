@@ -5,6 +5,7 @@ import java.util.List;
 import joeq.Class.jq_Method;
 import joeq.Compiler.Quad.BasicBlock;
 import joeq.Compiler.Quad.ControlFlowGraph;
+import joeq.Compiler.Quad.Operand.AConstOperand;
 import joeq.Compiler.Quad.Operand.RegisterOperand;
 import joeq.Compiler.Quad.RegisterFactory.Register;
 import joeq.Compiler.Quad.Quad;
@@ -105,35 +106,36 @@ public class LogsiteAnalysis extends JavaAnalysis {
 				regIds.add(new RegId(reg.getRegister()));
 			}
 
-			while (true) {
-				ControlFlowGraph cfg = m_caller.getCFG();
-				joeq.Util.Templates.ListIterator.BasicBlock reversePostOrderIterator = cfg.reversePostOrderIterator();
-				while (reversePostOrderIterator.hasNext()) {
-					BasicBlock bb = reversePostOrderIterator.nextBasicBlock();
-					for (int i = 0; i < bb.size(); i++) {
-						Quad quad = bb.getQuad(i);
-						joeq.Util.Templates.List.RegisterOperand regs = quad.getDefinedRegisters();
-						for (int j = 0; j < regs.size(); j++) {
-							RegisterOperand reg = regs.getRegisterOperand(j);
-							RegId regId = new RegId(reg.getRegister());
-							if (regIds.contains(regId)) {
-								System.out.println("found the definition of " + regId);
-								System.out.println(quad);
-								regIds.remove(regId);
-								joeq.Util.Templates.List.RegisterOperand usedRegs = quad.getUsedRegisters();
-								for (int k = 0; k < usedRegs.size(); k++) {
-									RegId newRegId = new RegId(usedRegs.getRegisterOperand(k).getRegister());
-									System.out.println("now looking for definition of " + newRegId);
-									regIds.add(newRegId);
-								}
+			ControlFlowGraph cfg = m_caller.getCFG();
+			joeq.Util.Templates.ListIterator.BasicBlock reversePostOrderIterator = cfg.reversePostOrderIterator();
+			while (reversePostOrderIterator.hasNext()) {
+				BasicBlock bb = reversePostOrderIterator.nextBasicBlock();
+				for (int i = 0; i < bb.size(); i++) {
+					Quad quad = bb.getQuad(i);
+					joeq.Util.Templates.List.RegisterOperand regs = quad.getDefinedRegisters();
+					for (int j = 0; j < regs.size(); j++) {
+						RegisterOperand reg = regs.getRegisterOperand(j);
+						RegId regId = new RegId(reg.getRegister());
+						if (regIds.contains(regId)) {
+							System.out.println("found the definition of " + regId);
+							if (quad.getOp2() instanceof AConstOperand) {
+								System.out.println(((AConstOperand) quad.getOp2()).getValue());
+							}
+							regIds.remove(regId);
+							joeq.Util.Templates.List.RegisterOperand usedRegs = quad.getUsedRegisters();
+							for (int k = 0; k < usedRegs.size(); k++) {
+								RegId newRegId = new RegId(usedRegs.getRegisterOperand(k).getRegister());
+								System.out.println("now looking for definition of " + newRegId);
+								regIds.add(newRegId);
 							}
 						}
 					}
 				}
 			}
 
-//			int line = q.getLineNumber(); // line number
-//			System.out.println("LogSiteAnalysis: call instruction at line: " + line + "@" + file + " is to target: " + m_callee);
+			// int line = q.getLineNumber(); // line number
+			// System.out.println("LogSiteAnalysis: call instruction at line: "
+			// + line + "@" + file + " is to target: " + m_callee);
 		}
 	}
 

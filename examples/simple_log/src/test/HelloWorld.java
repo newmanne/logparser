@@ -4,9 +4,7 @@ import java.util.List;
 
 public class HelloWorld {
 	public static void main(String[] args) {
-		List<Hurps> x = new ArrayList<Hurps>();
-		x.add(new Hurps());
-		System.out.println("Hello, " + args[0] + "!" + x);
+		info("Hello, " + args[0] + "!");
 	}
 	
 	public static class Hurps {
@@ -14,5 +12,9 @@ public class HelloWorld {
 		public String toString() {
 			return "I'm a hurp!";
 		}
+	}
+	
+	public static void info(String s) {
+		
 	}
 }

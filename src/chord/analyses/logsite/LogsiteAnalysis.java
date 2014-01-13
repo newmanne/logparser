@@ -1,29 +1,18 @@
 package chord.analyses.logsite;
 
-import java.util.ArrayList;
 import java.util.List;
 
-import net.sf.bddbddb.Domain;
-
-import com.google.common.collect.Lists;
-import com.sun.xml.internal.bind.unmarshaller.DOMScanner;
-
-import chord.analyses.invk.DomI;
-import chord.analyses.var.DomV;
-import chord.program.Program;
-import chord.project.analyses.JavaAnalysis;
 import joeq.Class.jq_Method;
-import joeq.Class.jq_Type;
 import joeq.Compiler.Quad.BasicBlock;
 import joeq.Compiler.Quad.ControlFlowGraph;
 import joeq.Compiler.Quad.Operand.RegisterOperand;
 import joeq.Compiler.Quad.Quad;
-import joeq.Compiler.Quad.RegisterFactory.Register;
 import chord.project.Chord;
-import chord.project.Project;
-import chord.project.analyses.ProgramRel;
 import chord.project.ClassicProject;
-import chord.util.tuple.integer.IntTrio;
+import chord.project.analyses.JavaAnalysis;
+import chord.project.analyses.ProgramRel;
+
+import com.google.common.collect.Lists;
 
 /**
  * This implements a simple analysis that prints the call-site -> call target
@@ -96,17 +85,18 @@ public class LogsiteAnalysis extends JavaAnalysis {
 			String file = m_caller.getDeclaringClass().getSourceFileName(); // file
 			jq_Method m_callee = (jq_Method) tuple[1]; // the callee method
 			if (file.startsWith("java")) {
-//			if (file.startsWith("java") || !logMethods.contains(m_callee.getName().toString())) {
+				// if (file.startsWith("java") ||
+				// !logMethods.contains(m_callee.getName().toString())) {
 				continue;
 			}
-			
+
 			List<Integer> regNums = Lists.newArrayList();
 			joeq.Util.Templates.List.RegisterOperand usedRegisters = q.getUsedRegisters();
 			for (int i = 0; i < usedRegisters.size(); i++) {
 				RegisterOperand reg = usedRegisters.getRegisterOperand(i);
 				regNums.add(reg.getRegister().getNumber());
 			}
-			
+
 			ControlFlowGraph cfg = m_caller.getCFG();
 			joeq.Util.Templates.ListIterator.BasicBlock reversePostOrderIterator = cfg.reversePostOrderIterator();
 			while (reversePostOrderIterator.hasNext()) {
@@ -116,7 +106,18 @@ public class LogsiteAnalysis extends JavaAnalysis {
 					joeq.Util.Templates.List.RegisterOperand regs = q.getUsedRegisters();
 					for (int j = 0; j < regs.size(); j++) {
 						RegisterOperand reg = regs.getRegisterOperand(j);
-						if (regNums.contains(reg.getRegister().getNumber())) { // TODO: also T vs R - then need to do flow analysis 
+						if (regNums.contains(reg.getRegister().getNumber())) { // TODO:
+																				// also
+																				// T
+																				// vs
+																				// R
+																				// -
+																				// then
+																				// need
+																				// to
+																				// do
+																				// flow
+																				// analysis
 							System.out.println(quad);
 						}
 					}

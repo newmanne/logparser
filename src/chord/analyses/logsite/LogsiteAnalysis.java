@@ -1,11 +1,15 @@
 package chord.analyses.logsite;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import joeq.Class.jq_Method;
 import joeq.Compiler.Quad.BasicBlock;
 import joeq.Compiler.Quad.ControlFlowGraph;
+import joeq.Compiler.Quad.Operand;
 import joeq.Compiler.Quad.Operand.AConstOperand;
+import joeq.Compiler.Quad.Operand.MethodOperand;
 import joeq.Compiler.Quad.Operand.RegisterOperand;
 import joeq.Compiler.Quad.RegisterFactory.Register;
 import joeq.Compiler.Quad.Quad;
@@ -15,7 +19,10 @@ import chord.project.ClassicProject;
 import chord.project.analyses.JavaAnalysis;
 import chord.project.analyses.ProgramRel;
 
+import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.ListMultimap;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Multimap;
 
 /**
  * This implements a simple analysis that prints the call-site -> call target
@@ -92,61 +99,92 @@ public class LogsiteAnalysis extends JavaAnalysis {
 			}
 
 			List<RegId> regIds = Lists.newArrayList();
-			joeq.Util.Templates.List.RegisterOperand usedRegisters = q.getUsedRegisters(); // this
-																							// should
-																							// be
-																							// the
-																							// register
-																							// whose
-																							// value
-																							// is
-																							// printed
+			joeq.Util.Templates.List.RegisterOperand usedRegisters = q.getUsedRegisters();
 			for (int i = 0; i < usedRegisters.size(); i++) {
 				RegisterOperand reg = usedRegisters.getRegisterOperand(i);
 				regIds.add(new RegId(reg.getRegister()));
 			}
+			RegId root = regIds.get(0);
+			// System.out.println("Starting search from the following regs" +
+			// regIds);
 
 			ControlFlowGraph cfg = m_caller.getCFG();
 			joeq.Util.Templates.ListIterator.BasicBlock reversePostOrderIterator = cfg.reversePostOrderIterator();
-			while (reversePostOrderIterator.hasNext()) {
-				BasicBlock bb = reversePostOrderIterator.nextBasicBlock();
-				for (int i = 0; i < bb.size(); i++) {
+			List<BasicBlock> reverse = Lists.reverse(Lists.newArrayList(reversePostOrderIterator));
+			ListMultimap<RegId, RegId> multimap = ArrayListMultimap.create();
+			for (BasicBlock bb : reverse) {
+				for (int i = bb.size() - 1; i >= 0; i--) {
 					Quad quad = bb.getQuad(i);
 					joeq.Util.Templates.List.RegisterOperand regs = quad.getDefinedRegisters();
 					for (int j = 0; j < regs.size(); j++) {
 						RegisterOperand reg = regs.getRegisterOperand(j);
-						RegId regId = new RegId(reg.getRegister());
-						if (regIds.contains(regId)) {
-							System.out.println("found the definition of " + regId);
+						if (regIds.contains(new RegId(reg.getRegister()))) {
+							final RegId regId = regIds.get(regIds.indexOf(new RegId(reg.getRegister())));
+							// System.out.println(quad);
+							// System.out.println("found the definition of " +
+							// regId);
 							if (quad.getOp2() instanceof AConstOperand) {
-								System.out.println(((AConstOperand) quad.getOp2()).getValue());
+								// System.out.println(((AConstOperand)
+								// quad.getOp2()).getValue());
 							}
+							regId.setDefinitionQuad(quad);
 							regIds.remove(regId);
 							joeq.Util.Templates.List.RegisterOperand usedRegs = quad.getUsedRegisters();
 							for (int k = 0; k < usedRegs.size(); k++) {
 								RegId newRegId = new RegId(usedRegs.getRegisterOperand(k).getRegister());
-								System.out.println("now looking for definition of " + newRegId);
+								multimap.put(regId, newRegId);
+								// System.out.println("now looking for definition of "
+								// + newRegId);
 								regIds.add(newRegId);
 							}
 						}
 					}
 				}
 			}
-
+			String regex = makeRegex(new StringBuilder(), root, multimap);
+			System.out.println(regex);
 			// int line = q.getLineNumber(); // line number
 			// System.out.println("LogSiteAnalysis: call instruction at line: "
 			// + line + "@" + file + " is to target: " + m_callee);
 		}
 	}
 
+	private String makeRegex(StringBuilder sb, RegId curNode, ListMultimap<RegId, RegId> multimap) {
+		Quad definitionQuad = curNode.getDefinitionQuad();
+		if (definitionQuad.getOp2() instanceof AConstOperand) {
+			final String value = (String) ((AConstOperand) definitionQuad.getOp2()).getValue();
+			sb.append(value);
+		}
+		// MethodOperand methodOperand = (MethodOperand)
+		// definitionQuad.getOp2();
+		// if
+		// (methodOperand.toString().equals("append:(Ljava/lang/String;)Ljava/lang/StringBuilder;@java.lang.StringBuilder"))
+		// {
+		// for (RegId reg : multimap.get(curNode)) {
+		// System.out.println(curNode.getDefinitionQuad());
+		// }
+		// } else {
+		for (RegId reg : multimap.get(curNode)) {
+			sb.append(makeRegex(new StringBuilder(), reg, multimap));
+		}
+		return sb.toString();
+	}
+
 	@Data
 	public static class RegId {
 		final int number;
 		final boolean isTemp;
+		Quad definitionQuad;
 
 		public RegId(Register r) {
 			this.number = r.getNumber();
 			this.isTemp = r.isTemp();
 		}
+
+		// @Override
+		// public String toString() {
+		// return (isTemp ? "T" : "R") + number;
+		// }
 	}
+
 }

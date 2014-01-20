@@ -11,6 +11,7 @@ import joeq.Compiler.Quad.Operand;
 import joeq.Compiler.Quad.Operand.AConstOperand;
 import joeq.Compiler.Quad.Operand.MethodOperand;
 import joeq.Compiler.Quad.Operand.RegisterOperand;
+import joeq.Compiler.Quad.Operator.Phi;
 import joeq.Compiler.Quad.RegisterFactory.Register;
 import joeq.Compiler.Quad.Quad;
 import lombok.Data;
@@ -45,45 +46,9 @@ import com.google.common.collect.Multimap;
 )
 public class LogsiteAnalysis extends JavaAnalysis {
 
-	final List<String> logMethods = Lists.newArrayList("info", "debug", "warn", "error", "println");
+	final List<String> logMethods = Lists.newArrayList("info", "debug", "warn", "error");
 
 	public void run() {
-		// // TODO: limit to our file, not libraries
-		// // TODO: values of things, especially the static part
-		// ArrayList<Integer> valid = new ArrayList<Integer>();
-		// ArrayList<Register> validRegs = new ArrayList<Register>();
-		//
-		// DomI domI = (DomI) ClassicProject.g().getTrgt("I");
-		// DomV domV = (DomV) ClassicProject.g().getTrgt("V");
-		//
-		// int numI = domI.size();
-		// for (int iIdx = 0; iIdx < numI; iIdx++) {
-		// Quad q = (Quad) domI.get(iIdx);
-		// jq_Method method = q.getMethod();
-		// if (method.getName().toString().equals("println") &&
-		// method.getDeclaringClass().getSourceFileName().startsWith("java")) {
-		// valid.add(iIdx);
-		// }
-		// }
-		//
-		// ProgramRel relIinvkArg = (ProgramRel)
-		// ClassicProject.g().getTrgt("IinvkArg");
-		// relIinvkArg.load(); // Load the IM relation.
-		// for (IntTrio tuple : relIinvkArg.getAry3IntTuples()) {
-		// if (valid.contains(tuple.idx0)) {
-		// Register register = domV.get(tuple.idx2);
-		// validRegs.add(register);
-		// }
-		// }
-		//
-		// ProgramRel relVT = (ProgramRel) ClassicProject.g().getTrgt("VT");
-		// relVT.load(); // Load the IM relation.
-		// for (Object[] tuple : relVT.getAryNValTuples()) {
-		// Register r = (Register) tuple[0];
-		// if (validRegs.contains(r)) {
-		// jq_Type type = (jq_Type) tuple[1];
-		// }
-		// }
 
 		ProgramRel relIM = (ProgramRel) ClassicProject.g().getTrgt("IM");
 		relIM.load(); // Load the IM relation.
@@ -104,7 +69,7 @@ public class LogsiteAnalysis extends JavaAnalysis {
 				RegisterOperand reg = usedRegisters.getRegisterOperand(i);
 				regIds.add(new RegId(reg.getRegister()));
 			}
-			RegId root = regIds.get(0);
+			final List<RegId> roots = Lists.newArrayList(regIds);
 			// System.out.println("Starting search from the following regs" +
 			// regIds);
 
@@ -115,34 +80,31 @@ public class LogsiteAnalysis extends JavaAnalysis {
 			for (BasicBlock bb : reverse) {
 				for (int i = bb.size() - 1; i >= 0; i--) {
 					Quad quad = bb.getQuad(i);
+					if (quad.toString().contains("PHI")) { // if its a phi function, just skip
+						continue;
+					}
 					joeq.Util.Templates.List.RegisterOperand regs = quad.getDefinedRegisters();
 					for (int j = 0; j < regs.size(); j++) {
 						RegisterOperand reg = regs.getRegisterOperand(j);
 						if (regIds.contains(new RegId(reg.getRegister()))) {
 							final RegId regId = regIds.get(regIds.indexOf(new RegId(reg.getRegister())));
-							// System.out.println(quad);
-							// System.out.println("found the definition of " +
-							// regId);
-							if (quad.getOp2() instanceof AConstOperand) {
-								// System.out.println(((AConstOperand)
-								// quad.getOp2()).getValue());
-							}
+
 							regId.setDefinitionQuad(quad);
 							regIds.remove(regId);
 							joeq.Util.Templates.List.RegisterOperand usedRegs = quad.getUsedRegisters();
 							for (int k = 0; k < usedRegs.size(); k++) {
 								RegId newRegId = new RegId(usedRegs.getRegisterOperand(k).getRegister());
 								multimap.put(regId, newRegId);
-								// System.out.println("now looking for definition of "
-								// + newRegId);
 								regIds.add(newRegId);
 							}
 						}
 					}
 				}
 			}
-			String regex = makeRegex(new StringBuilder(), root, multimap);
-			System.out.println(regex);
+			for (RegId root: roots) {
+				String regex = makeRegex(new StringBuilder(), root, multimap);
+				System.out.println(regex);
+			}
 			// int line = q.getLineNumber(); // line number
 			// System.out.println("LogSiteAnalysis: call instruction at line: "
 			// + line + "@" + file + " is to target: " + m_callee);
@@ -150,20 +112,13 @@ public class LogsiteAnalysis extends JavaAnalysis {
 	}
 
 	private String makeRegex(StringBuilder sb, RegId curNode, ListMultimap<RegId, RegId> multimap) {
-		Quad definitionQuad = curNode.getDefinitionQuad();
-		if (definitionQuad.getOp2() instanceof AConstOperand) {
+		final Quad definitionQuad = curNode.getDefinitionQuad();
+		if (definitionQuad == null) {
+			sb.append(".*");
+		} else if (definitionQuad.getOp2() instanceof AConstOperand) {
 			final String value = (String) ((AConstOperand) definitionQuad.getOp2()).getValue();
 			sb.append(value);
 		}
-		// MethodOperand methodOperand = (MethodOperand)
-		// definitionQuad.getOp2();
-		// if
-		// (methodOperand.toString().equals("append:(Ljava/lang/String;)Ljava/lang/StringBuilder;@java.lang.StringBuilder"))
-		// {
-		// for (RegId reg : multimap.get(curNode)) {
-		// System.out.println(curNode.getDefinitionQuad());
-		// }
-		// } else {
 		for (RegId reg : multimap.get(curNode)) {
 			sb.append(makeRegex(new StringBuilder(), reg, multimap));
 		}

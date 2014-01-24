@@ -1,5 +1,7 @@
 package chord.analyses.logsite;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -19,31 +21,21 @@ import chord.project.Chord;
 import chord.project.ClassicProject;
 import chord.project.analyses.JavaAnalysis;
 import chord.project.analyses.ProgramRel;
+import chord.util.FileUtils;
 
+import com.google.common.base.Charsets;
+import com.google.common.base.Joiner;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ListMultimap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Multimap;
+import com.google.common.io.Files;
 
 /**
  * This implements a simple analysis that prints the call-site -> call target
- * information. The name of the analysis is "logsite-java". TODO: add a filter
- * to keep only LOG.info calls.
+ * information. The name of the analysis is "logsite-java".
  */
-@Chord(name = "logsite-java", consumes = { "I", "V", "IinvkArg", "VT", "IM" } // This
-// analysis
-// uses
-// a
-// relation
-// IM:
-// which
-// is a
-// tuple
-// in the format of (call-site quad, target method), that contains
-// all the call-site <-> target information. This is computed in
-// alias/cipa_0cfa.dlog. This means that the underlying system will
-// run "cipa-0cfa-dlog" analysis first!
-)
+@Chord(name = "logsite-java", consumes = { "I", "V", "IinvkArg", "VT", "IM" })
 public class LogsiteAnalysis extends JavaAnalysis {
 
 	final List<String> logMethods = Lists.newArrayList("info", "debug", "warn", "error");
@@ -52,14 +44,17 @@ public class LogsiteAnalysis extends JavaAnalysis {
 
 		ProgramRel relIM = (ProgramRel) ClassicProject.g().getTrgt("IM");
 		relIM.load(); // Load the IM relation.
+
 		for (Object[] tuple : relIM.getAryNValTuples()) {
-			// iterate through every tuple in IM
+
 			Quad q = (Quad) tuple[0]; // the call-site, in quad format
+			System.out.println("Call site @" + q.getMethod() + " in file " + q.getMethod().getDeclaringClass().getSourceFileName() + " on line " + q.getLineNumber() + " " +  q);
 			jq_Method m_caller = q.getMethod(); // method enclosing the call
 												// site
 			String file = m_caller.getDeclaringClass().getSourceFileName(); // file
 			jq_Method m_callee = (jq_Method) tuple[1]; // the callee method
-			if (file.startsWith("java") || !logMethods.contains(m_callee.getName().toString())) {
+
+			if (!file.startsWith("org/apache/hadoop") || !isLogMethod(m_callee)) {
 				continue;
 			}
 
@@ -70,8 +65,6 @@ public class LogsiteAnalysis extends JavaAnalysis {
 				regIds.add(new RegId(reg.getRegister()));
 			}
 			final List<RegId> roots = Lists.newArrayList(regIds);
-			// System.out.println("Starting search from the following regs" +
-			// regIds);
 
 			ControlFlowGraph cfg = m_caller.getCFG();
 			joeq.Util.Templates.ListIterator.BasicBlock reversePostOrderIterator = cfg.reversePostOrderIterator();
@@ -101,14 +94,19 @@ public class LogsiteAnalysis extends JavaAnalysis {
 					}
 				}
 			}
-			for (RegId root: roots) {
-				String regex = makeRegex(new StringBuilder(), root, multimap);
+			for (RegId root : roots) {
+				final String regex = makeRegex(new StringBuilder(), root, multimap);
+				final int line = q.getLineNumber(); // line number
+				System.out.println("LogSiteAnalysis: call instruction at line: " + line + "@" + file + " is from: " + m_caller);
 				System.out.println(regex);
 			}
-			// int line = q.getLineNumber(); // line number
-			// System.out.println("LogSiteAnalysis: call instruction at line: "
-			// + line + "@" + file + " is to target: " + m_callee);
 		}
+
+	}
+
+	private boolean isLogMethod(jq_Method m_callee) {
+		return m_callee.getName().toString().contains("info") || m_callee.getName().toString().contains("debug")
+				|| m_callee.getName().toString().contains("warn") || m_callee.getName().toString().contains("error");
 	}
 
 	private String makeRegex(StringBuilder sb, RegId curNode, ListMultimap<RegId, RegId> multimap) {

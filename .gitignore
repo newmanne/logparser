@@ -5,3 +5,4 @@
 *.war
 *.ear
 examples/simple_log/chord_output/
+examples/hdfs/chord_output/

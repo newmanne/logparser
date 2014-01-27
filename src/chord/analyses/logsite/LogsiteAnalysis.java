@@ -1,60 +1,46 @@
 package chord.analyses.logsite;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 import joeq.Class.jq_Method;
 import joeq.Compiler.Quad.BasicBlock;
 import joeq.Compiler.Quad.ControlFlowGraph;
-import joeq.Compiler.Quad.Operand;
 import joeq.Compiler.Quad.Operand.AConstOperand;
-import joeq.Compiler.Quad.Operand.MethodOperand;
 import joeq.Compiler.Quad.Operand.RegisterOperand;
-import joeq.Compiler.Quad.Operator.Phi;
-import joeq.Compiler.Quad.RegisterFactory.Register;
 import joeq.Compiler.Quad.Quad;
+import joeq.Compiler.Quad.RegisterFactory.Register;
 import lombok.Data;
 import chord.project.Chord;
 import chord.project.ClassicProject;
 import chord.project.analyses.JavaAnalysis;
 import chord.project.analyses.ProgramRel;
-import chord.util.FileUtils;
 
-import com.google.common.base.Charsets;
-import com.google.common.base.Joiner;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ListMultimap;
 import com.google.common.collect.Lists;
-import com.google.common.collect.Multimap;
-import com.google.common.io.Files;
 
 /**
  * This implements a simple analysis that prints the call-site -> call target
  * information. The name of the analysis is "logsite-java".
  */
-@Chord(name = "logsite-java", consumes = { "I", "V", "IinvkArg", "VT", "IM" })
+@Chord(name = "logsite-java", consumes = { "MLogInvkInst" })
 public class LogsiteAnalysis extends JavaAnalysis {
 
-	final List<String> logMethods = Lists.newArrayList("info", "debug", "warn", "error");
-
 	public void run() {
+		
+		ProgramRel relMLogInvkInst = (ProgramRel) ClassicProject.g().getTrgt("MLogInvkInst");
+		relMLogInvkInst.load(); 
 
-		ProgramRel relIM = (ProgramRel) ClassicProject.g().getTrgt("IM");
-		relIM.load(); // Load the IM relation.
-
-		for (Object[] tuple : relIM.getAryNValTuples()) {
-
-			Quad q = (Quad) tuple[0]; // the call-site, in quad format
-			System.out.println("Call site @" + q.getMethod() + " in file " + q.getMethod().getDeclaringClass().getSourceFileName() + " on line " + q.getLineNumber() + " " +  q);
-			jq_Method m_caller = q.getMethod(); // method enclosing the call
-												// site
+		for (Object[] tuple : relMLogInvkInst.getAryNValTuples()) {
+			
+			Quad q = (Quad) tuple[1]; // the call-site, in quad format
+			jq_Method m_caller = q.getMethod(); // the callee method
+			
 			String file = m_caller.getDeclaringClass().getSourceFileName(); // file
-			jq_Method m_callee = (jq_Method) tuple[1]; // the callee method
+//			System.out.println("Call site @" + q.getMethod() + " in file " + q.getMethod().getDeclaringClass().getSourceFileName() + " on line " + q.getLineNumber() + " " +  q);
 
-			if (!file.startsWith("org/apache/hadoop") || !isLogMethod(m_callee)) {
+			// TODO: better to filter with chord.ext.scope.exclude
+			if (!file.startsWith("org/apache/hadoop")) {
 				continue;
 			}
 
@@ -94,19 +80,18 @@ public class LogsiteAnalysis extends JavaAnalysis {
 					}
 				}
 			}
+			
+			final int line = q.getLineNumber(); // line number
+			System.out.println("LogSiteAnalysis: call instruction at line: " + line + "@" + file + " is from: " + m_caller);
+
 			for (RegId root : roots) {
 				final String regex = makeRegex(new StringBuilder(), root, multimap);
-				final int line = q.getLineNumber(); // line number
-				System.out.println("LogSiteAnalysis: call instruction at line: " + line + "@" + file + " is from: " + m_caller);
-				System.out.println(regex);
+				if (!regex.isEmpty()) {
+					System.out.println(regex);
+				}
 			}
 		}
 
-	}
-
-	private boolean isLogMethod(jq_Method m_callee) {
-		return m_callee.getName().toString().contains("info") || m_callee.getName().toString().contains("debug")
-				|| m_callee.getName().toString().contains("warn") || m_callee.getName().toString().contains("error");
 	}
 
 	private String makeRegex(StringBuilder sb, RegId curNode, ListMultimap<RegId, RegId> multimap) {
@@ -114,7 +99,8 @@ public class LogsiteAnalysis extends JavaAnalysis {
 		if (definitionQuad == null) {
 			sb.append(".*");
 		} else if (definitionQuad.getOp2() instanceof AConstOperand) {
-			final String value = (String) ((AConstOperand) definitionQuad.getOp2()).getValue();
+			// TODO: fix for NPE on Server.java (ipc) line 979 - 0 arg functions 
+			final String value = (((AConstOperand) definitionQuad.getOp2()).getValue()).toString();
 			sb.append(value);
 		}
 		for (RegId reg : multimap.get(curNode)) {

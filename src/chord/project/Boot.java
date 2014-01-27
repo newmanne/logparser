@@ -144,7 +144,9 @@ public class Boot {
 		String maxHeap = getOrSetProperty("chord.max.heap", "2048m");
 		String maxStack = getOrSetProperty("chord.max.stack", "32m");
 		String jvmargs = getOrSetProperty("chord.jvmargs",
-			"-ea -Xmx" + maxHeap + " -Xss" + maxStack);
+			"-ea -Xmx" + maxHeap + " -Xss" + maxStack); 
+//			+ " -Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=5432");
+		
 		boolean isClassic = getOrSetProperty("chord.classic", "true").equals("true");
 		String stdJavaAnalysisPath = getOrSetProperty("chord.std.java.analysis.path", chordJarFile);
 		String extJavaAnalysisPath = getOrSetProperty("chord.ext.java.analysis.path", "");
